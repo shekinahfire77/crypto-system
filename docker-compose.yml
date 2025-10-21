@@ -1,0 +1,63 @@
+version: '3.9'
+
+services:
+  crypto-system:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crypto-extraction-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - COINGECKO_API_KEY=${COINGECKO_API_KEY}
+      - CMC_API_KEY=${CMC_API_KEY}
+      - CMC_DEX_API_KEY=${CMC_DEX_API_KEY}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=crypto_market
+      - DB_USER=crypto_user
+      - DB_PASSWORD=crypto_pass
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config
+    ports:
+      - "8000:8000"  # Metrics and health check endpoint
+    restart: unless-stopped
+    networks:
+      - crypto-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: crypto-database
+    environment:
+      POSTGRES_DB: crypto_market
+      POSTGRES_USER: crypto_user
+      POSTGRES_PASSWORD: crypto_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../Databases/crypto-market-db/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ../Databases/crypto-market-db/init:/docker-entrypoint-initdb.d/init
+    ports:
+      - "5432:5432"
+    networks:
+      - crypto-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crypto_user -d crypto_market"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+
+networks:
+  crypto-network:
+    driver: bridge
