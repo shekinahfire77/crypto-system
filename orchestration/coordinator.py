@@ -1,6 +1,7 @@
 """Data coordination and orchestration logic."""
 
 import asyncio
+from datetime import datetime
 from typing import Optional
 
 import structlog
@@ -69,6 +70,7 @@ class DataCoordinator:
         if not self.settings.enable_coingecko:
             return 0
 
+        session = None
         try:
             await logger.ainfo("fetching_prices")
             
@@ -91,15 +93,16 @@ class DataCoordinator:
                     )
                     
                     # Get or create trading pair (assuming USD quote)
+                    # CoinGecko data is aggregated, use a default exchange ID of 1
                     trading_pair = repo.get_or_create_trading_pair(
-                        base_currency_id=crypto.id,
+                        exchange_id=1,  # Default aggregate exchange
+                        crypto_id=crypto.id,
+                        base_currency=transformed["symbol"],
                         quote_currency="USD",
-                        exchange_id=None,  # CoinGecko aggregated data
                     )
                     
                     # Prepare price record for batch insert
                     # Use current_price for OHLC since we only have current snapshot
-                    from datetime import datetime
                     price_batch.append((
                         trading_pair.id,
                         transformed["current_price"],  # open
@@ -131,13 +134,15 @@ class DataCoordinator:
                 count=records_inserted,
             )
 
-            session.close()
             return records_inserted
 
         except Exception as e:
-            await logger.aerror("price_fetch_failed", error=str(e))
+            await logger.aerror("price_fetch_failed", error=str(e), exc_info=True)
             MetricsCollector.record_api_error("coingecko", str(type(e).__name__))
             return 0
+        finally:
+            if session:
+                session.close()
 
     async def fetch_and_store_metadata(self) -> int:
         """Fetch and store cryptocurrency metadata.
@@ -148,6 +153,7 @@ class DataCoordinator:
         if not self.settings.enable_coingecko:
             return 0
 
+        session = None
         try:
             await logger.ainfo("fetching_metadata")
             
@@ -160,7 +166,7 @@ class DataCoordinator:
 
             for coin in coins[:self.settings.batch_size]:  # Batch processing
                 transformed = MetadataTransformer.transform_coingecko_coin_details(coin)
-                crypto = repo.get_or_create_cryptocurrency(
+                repo.get_or_create_cryptocurrency(
                     symbol=transformed.get("symbol", ""),
                     name=transformed.get("name", ""),
                     description=transformed.get("description", ""),
@@ -173,13 +179,15 @@ class DataCoordinator:
                 count=records_inserted,
             )
 
-            session.close()
             return records_inserted
 
         except Exception as e:
-            await logger.aerror("metadata_fetch_failed", error=str(e))
+            await logger.aerror("metadata_fetch_failed", error=str(e), exc_info=True)
             MetricsCollector.record_api_error("coingecko", str(type(e).__name__))
             return 0
+        finally:
+            if session:
+                session.close()
 
     async def fetch_and_store_sentiment(self) -> int:
         """Fetch and store market sentiment data.
@@ -190,6 +198,7 @@ class DataCoordinator:
         if not self.settings.enable_sentiment_analysis:
             return 0
 
+        session = None
         try:
             await logger.ainfo("fetching_sentiment")
             
@@ -199,6 +208,7 @@ class DataCoordinator:
             session = get_db_session()
             repo = CryptoRepository(session)
             records_inserted = 0
+            recorded_at = datetime.now()  # Use consistent timestamp for all records
 
             for item in trending.get("coins", []):
                 transformed = SentimentTransformer.transform_coingecko_trending(item)
@@ -206,6 +216,14 @@ class DataCoordinator:
                 
                 if crypto:
                     await logger.adebug("storing_sentiment", symbol=transformed["symbol"])
+                    # Actually persist sentiment data to database with timestamp
+                    repo.add_market_sentiment(
+                        crypto_id=crypto.id,
+                        sentiment_score=transformed.get("sentiment_score", 0),
+                        sentiment_label=transformed.get("sentiment_label", "neutral"),
+                        mentions_count=transformed.get("mentions_count", 0),
+                        recorded_at=recorded_at,
+                    )
                     records_inserted += 1
 
             MetricsCollector.record_records_processed(
@@ -214,13 +232,15 @@ class DataCoordinator:
                 count=records_inserted,
             )
 
-            session.close()
             return records_inserted
 
         except Exception as e:
-            await logger.aerror("sentiment_fetch_failed", error=str(e))
+            await logger.aerror("sentiment_fetch_failed", error=str(e), exc_info=True)
             MetricsCollector.record_api_error("coingecko", str(type(e).__name__))
             return 0
+        finally:
+            if session:
+                session.close()
 
     async def fetch_and_store_dex_data(self) -> int:
         """Fetch and store DEX pair data.
@@ -248,7 +268,7 @@ class DataCoordinator:
             return records_inserted
 
         except Exception as e:
-            await logger.aerror("dex_fetch_failed", error=str(e))
+            await logger.aerror("dex_fetch_failed", error=str(e), exc_info=True)
             MetricsCollector.record_api_error("cmc_dex", str(type(e).__name__))
             return 0
 
@@ -261,6 +281,7 @@ class DataCoordinator:
         if not self.settings.enable_coingecko:
             return 0
 
+        session = None
         try:
             await logger.ainfo("fetching_exchanges")
             
@@ -288,10 +309,12 @@ class DataCoordinator:
                 count=records_inserted,
             )
 
-            session.close()
             return records_inserted
 
         except Exception as e:
-            await logger.aerror("exchange_fetch_failed", error=str(e))
+            await logger.aerror("exchange_fetch_failed", error=str(e), exc_info=True)
             MetricsCollector.record_api_error("coingecko", str(type(e).__name__))
             return 0
+        finally:
+            if session:
+                session.close()

@@ -1,5 +1,7 @@
 """Database connection management."""
 
+from functools import lru_cache
+
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -7,8 +9,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from config.settings import get_settings
 
 
+@lru_cache(maxsize=1)
 def get_db_engine() -> Engine:
-    """Create and return database engine.
+    """Create and return database engine (cached as singleton).
 
     Returns:
         SQLAlchemy Engine instance
@@ -27,11 +30,11 @@ def get_db_engine() -> Engine:
 
 
 def get_db_session() -> Session:
-    """Get a database session.
+    """Get a database session using cached engine.
 
     Returns:
         SQLAlchemy Session instance
     """
-    engine = get_db_engine()
+    engine = get_db_engine()  # Returns cached singleton
     SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
     return SessionLocal()

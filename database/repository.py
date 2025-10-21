@@ -1,6 +1,6 @@
 """Data access layer for crypto database."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import List, Optional
 
@@ -322,7 +322,7 @@ class CryptoRepository:
         Returns:
             List of PriceHistory records
         """
-        start_date = datetime.utcnow() - timedelta(hours=hours)
+        start_date = datetime.now(timezone.utc) - timedelta(hours=hours)
         return (
             self.session.query(PriceHistory)
             .filter(
@@ -434,7 +434,7 @@ class CryptoRepository:
         Returns:
             List of MarketEvent records
         """
-        start_date = datetime.utcnow() - timedelta(days=days)
+        start_date = datetime.now(timezone.utc) - timedelta(days=days)
 
         query = self.session.query(MarketEvent).filter(
             MarketEvent.event_date >= start_date.date()

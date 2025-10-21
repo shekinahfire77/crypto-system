@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models matching the crypto_market database schema."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -20,6 +20,11 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from typing import List
 
 
+def utc_now():
+    """Get current UTC time in timezone-aware format."""
+    return datetime.now(timezone.utc)
+
+
 class Base(DeclarativeBase):
     """SQLAlchemy base class for all models."""
 
@@ -35,9 +40,9 @@ class Cryptocurrency(Base):
     symbol: Mapped[str] = mapped_column(VARCHAR(10), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(VARCHAR(100), unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
 
     # Relationships
@@ -67,7 +72,7 @@ class Exchange(Base):
     website: Mapped[str | None] = mapped_column(VARCHAR(255))
     established_year: Mapped[int | None] = mapped_column(Integer)
     trading_volume_usd: Mapped[Decimal | None] = mapped_column(DECIMAL(20, 2))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     # Relationships
     trading_pairs: Mapped[List["TradingPair"]] = relationship(
@@ -94,7 +99,7 @@ class TradingPair(Base):
     base_currency: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
     quote_currency: Mapped[str] = mapped_column(VARCHAR(10), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     # Relationships
     exchange: Mapped["Exchange"] = relationship(
@@ -135,7 +140,7 @@ class PriceHistory(Base):
     close_price: Mapped[Decimal] = mapped_column(DECIMAL(18, 8), nullable=False)
     volume: Mapped[Decimal] = mapped_column(DECIMAL(20, 8), nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     # Relationships
     trading_pair: Mapped["TradingPair"] = relationship(
@@ -161,7 +166,7 @@ class MarketSentiment(Base):
     sentiment_label: Mapped[str] = mapped_column(VARCHAR(20), nullable=False)
     mentions_count: Mapped[int] = mapped_column(Integer, nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     # Relationships
     cryptocurrency: Mapped["Cryptocurrency"] = relationship(
@@ -188,7 +193,7 @@ class MarketEvent(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     impact_level: Mapped[str] = mapped_column(VARCHAR(20), nullable=False)
     event_date: Mapped[Date] = mapped_column(Date, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     # Relationships
     cryptocurrency: Mapped["Cryptocurrency | None"] = relationship(

@@ -1,6 +1,7 @@
 """Main entry point for crypto system."""
 
 import asyncio
+import platform
 import signal
 import sys
 from time import time
@@ -142,19 +143,22 @@ async def main() -> None:
     """Main entry point."""
     service = CryptoSystemService()
 
-    async def signal_handler(sig):
+    async def signal_handler(sig: int) -> None:
         """Handle shutdown signals."""
         await logger.ainfo("signal_received", signal=sig)
         await service.stop()
         sys.exit(0)
 
-    # Register signal handlers
-    loop = asyncio.get_event_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(
-            sig,
-            lambda s=sig: asyncio.create_task(signal_handler(s)),
-        )
+    # Register signal handlers (Unix/Linux only - not available on Windows)
+    if platform.system() != "Windows":
+        loop = asyncio.get_event_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(
+                sig,
+                lambda s=sig: asyncio.create_task(signal_handler(s)),
+            )
+    else:
+        await logger.ainfo("signal_handlers_not_available_on_windows")
 
     try:
         await service.start()
