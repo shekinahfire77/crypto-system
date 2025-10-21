@@ -1,4 +1,4 @@
-aiohttp==3.9.5
+aiohttp==3.12.14
 psycopg2-binary==2.9.10
 python-dotenv==1.0.1
 pydantic==2.7.1
