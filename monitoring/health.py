@@ -1,9 +1,13 @@
 """Health check endpoint."""
 
+import asyncio
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
+import aiohttp
 import structlog
+
+from config.settings import get_settings
 
 logger = structlog.get_logger(__name__)
 
@@ -21,8 +25,10 @@ class HealthChecker:
 
     def __init__(self):
         """Initialize health checker."""
-        self.start_time = datetime.utcnow()
-        self.last_check = datetime.utcnow()
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+        self.start_time = now
+        self.last_check = now
         self.status = HealthStatus.HEALTHY
         self.errors: Dict[str, Any] = {}
 
@@ -43,31 +49,125 @@ class HealthChecker:
             self.errors["database"] = str(e)
             return False
 
-    def check_api_connectivity(self) -> Dict[str, bool]:
+    async def check_api_connectivity(self) -> Dict[str, bool]:
         """Check API connectivity.
 
         Returns:
             Dictionary of API status
         """
-        status = {
-            "coingecko": True,
-            "cmc": True,
-            "cmc_dex": True,
-        }
-        # TODO: Implement actual health checks for each API
+        settings = get_settings()
+        status = {}
+        
+        # Check CoinGecko
+        if settings.enable_coingecko:
+            status["coingecko"] = await self._check_coingecko(settings)
+        else:
+            status["coingecko"] = None  # Disabled
+        
+        # Check CoinMarketCap
+        if settings.enable_cmc:
+            status["cmc"] = await self._check_cmc(settings)
+        else:
+            status["cmc"] = None  # Disabled
+        
+        # Check CMC DEX
+        if settings.enable_cmc_dex:
+            status["cmc_dex"] = await self._check_cmc_dex(settings)
+        else:
+            status["cmc_dex"] = None  # Disabled
 
         return status
 
-    def get_health_status(self) -> Dict[str, Any]:
+    async def _check_coingecko(self, settings) -> bool:
+        """Check CoinGecko API health.
+        
+        Args:
+            settings: Application settings
+            
+        Returns:
+            True if API is reachable and responding
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Lightweight ping endpoint
+                url = f"{settings.coingecko_base_url}/ping"
+                headers = {}
+                if settings.coingecko_api_key:
+                    headers["x-cg-pro-api-key"] = settings.coingecko_api_key
+                
+                async with session.get(
+                    url, 
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    return response.status == 200
+        except Exception as e:
+            self.errors["coingecko"] = str(e)
+            await logger.awarning("coingecko_health_check_failed", error=str(e))
+            return False
+
+    async def _check_cmc(self, settings) -> bool:
+        """Check CoinMarketCap API health.
+        
+        Args:
+            settings: Application settings
+            
+        Returns:
+            True if API is reachable and responding
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Lightweight info endpoint
+                url = f"{settings.cmc_base_url}/v1/key/info"
+                headers = {"X-CMC_PRO_API_KEY": settings.cmc_api_key}
+                
+                async with session.get(
+                    url,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    return response.status == 200
+        except Exception as e:
+            self.errors["cmc"] = str(e)
+            await logger.awarning("cmc_health_check_failed", error=str(e))
+            return False
+
+    async def _check_cmc_dex(self, settings) -> bool:
+        """Check CoinMarketCap DEX API health.
+        
+        Args:
+            settings: Application settings
+            
+        Returns:
+            True if API is reachable and responding
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Use same key info endpoint as CMC
+                url = f"{settings.cmc_dex_base_url}/v1/key/info"
+                headers = {"X-CMC_PRO_API_KEY": settings.cmc_dex_api_key}
+                
+                async with session.get(
+                    url,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    return response.status == 200
+        except Exception as e:
+            self.errors["cmc_dex"] = str(e)
+            await logger.awarning("cmc_dex_health_check_failed", error=str(e))
+            return False
+
+    async def get_health_status(self) -> Dict[str, Any]:
         """Get current health status.
 
         Returns:
             Health status dictionary
         """
         db_ok = self.check_database_connection()
-        api_status = self.check_api_connectivity()
+        api_status = await self.check_api_connectivity()
 
-        all_apis_ok = all(api_status.values())
+        all_apis_ok = all(v is True for v in api_status.values() if v is not None)
 
         if not db_ok:
             overall_status = HealthStatus.UNHEALTHY
@@ -76,11 +176,13 @@ class HealthChecker:
         else:
             overall_status = HealthStatus.HEALTHY
 
-        uptime = (datetime.utcnow() - self.start_time).total_seconds()
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+        uptime = (now - self.start_time).total_seconds()
 
         return {
             "status": overall_status,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": now.isoformat(),
             "uptime_seconds": uptime,
             "database": {
                 "status": "ok" if db_ok else "error",

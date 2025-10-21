@@ -92,6 +92,12 @@ class BaseAPIService(ABC):
         if self.session:
             await self.session.close()
 
+    async def close(self) -> None:
+        """Close the API client session."""
+        if self.session and not self.session.closed:
+            await self.session.close()
+            await self.logger.adebug("api_client_session_closed")
+
     @abstractmethod
     def get_headers(self) -> Dict[str, str]:
         """Get API-specific headers.

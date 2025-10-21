@@ -49,7 +49,16 @@ class DataCoordinator:
     async def cleanup(self) -> None:
         """Cleanup resources."""
         await logger.ainfo("cleaning_up_coordinators")
-        # Close sessions if needed
+        
+        # Close API client sessions
+        if self.coingecko:
+            await self.coingecko.close()
+        if self.cmc:
+            await self.cmc.close()
+        if self.cmc_dex:
+            await self.cmc_dex.close()
+        
+        await logger.ainfo("cleanup_complete")
 
     async def fetch_and_store_prices(self) -> int:
         """Fetch current prices and store in database.
@@ -69,11 +78,52 @@ class DataCoordinator:
             session = get_db_session()
             repo = CryptoRepository(session)
             records_inserted = 0
+            price_batch = []
 
             for market in markets:
-                transformed = PriceTransformer.transform_coingecko_market_data(market)
-                await logger.adebug("storing_price", symbol=transformed["symbol"])
-                records_inserted += 1
+                try:
+                    transformed = PriceTransformer.transform_coingecko_market_data(market)
+                    
+                    # Get or create cryptocurrency
+                    crypto = repo.get_or_create_cryptocurrency(
+                        symbol=transformed["symbol"],
+                        name=transformed["name"],
+                    )
+                    
+                    # Get or create trading pair (assuming USD quote)
+                    trading_pair = repo.get_or_create_trading_pair(
+                        base_currency_id=crypto.id,
+                        quote_currency="USD",
+                        exchange_id=None,  # CoinGecko aggregated data
+                    )
+                    
+                    # Prepare price record for batch insert
+                    # Use current_price for OHLC since we only have current snapshot
+                    from datetime import datetime
+                    price_batch.append((
+                        trading_pair.id,
+                        transformed["current_price"],  # open
+                        transformed["high_24h"] or transformed["current_price"],  # high
+                        transformed["low_24h"] or transformed["current_price"],  # low
+                        transformed["current_price"],  # close
+                        transformed["total_volume"] or 0,  # volume
+                        datetime.now(),  # recorded_at
+                    ))
+                    
+                    await logger.adebug("prepared_price", symbol=transformed["symbol"])
+                    
+                except Exception as e:
+                    await logger.awarning(
+                        "failed_to_prepare_price",
+                        symbol=market.get("symbol", "unknown"),
+                        error=str(e),
+                    )
+                    continue
+
+            # Batch insert all price records
+            if price_batch:
+                records_inserted = repo.batch_add_prices(price_batch)
+                await logger.ainfo("prices_inserted", count=records_inserted)
 
             MetricsCollector.record_records_processed(
                 source="coingecko",
