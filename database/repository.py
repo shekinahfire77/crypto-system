@@ -38,7 +38,7 @@ class CryptoRepository:
         name: str,
         description: Optional[str] = None,
     ) -> Cryptocurrency:
-        """Get existing or create new cryptocurrency.
+        """Get existing or create new cryptocurrency, updating if metadata changed.
 
         Args:
             symbol: Cryptocurrency symbol
@@ -50,6 +50,7 @@ class CryptoRepository:
         """
         crypto = self.session.query(Cryptocurrency).filter_by(symbol=symbol).first()
         if not crypto:
+            # Create new cryptocurrency
             crypto = Cryptocurrency(
                 symbol=symbol,
                 name=name,
@@ -57,6 +58,20 @@ class CryptoRepository:
             )
             self.session.add(crypto)
             self.session.commit()
+        else:
+            # Update existing record if metadata changed
+            updated = False
+            
+            if crypto.name != name:
+                crypto.name = name
+                updated = True
+            
+            if description and crypto.description != description:
+                crypto.description = description
+                updated = True
+            
+            if updated:
+                self.session.commit()
 
         return crypto
 
@@ -88,7 +103,7 @@ class CryptoRepository:
         established_year: Optional[int] = None,
         trading_volume_usd: Optional[Decimal] = None,
     ) -> Exchange:
-        """Get existing or create new exchange.
+        """Get existing or create new exchange, updating if metadata changed.
 
         Args:
             name: Exchange name
@@ -102,6 +117,7 @@ class CryptoRepository:
         """
         exchange = self.session.query(Exchange).filter_by(name=name).first()
         if not exchange:
+            # Create new exchange
             exchange = Exchange(
                 name=name,
                 country=country,
@@ -112,9 +128,27 @@ class CryptoRepository:
             self.session.add(exchange)
             self.session.commit()
         else:
-            # Update trading volume
+            # Update existing record if metadata changed
+            updated = False
+            
+            if country and exchange.country != country:
+                exchange.country = country
+                updated = True
+            
+            if website and exchange.website != website:
+                exchange.website = website
+                updated = True
+            
+            if established_year and exchange.established_year != established_year:
+                exchange.established_year = established_year
+                updated = True
+            
+            # Always update trading volume when provided
             if trading_volume_usd:
                 exchange.trading_volume_usd = trading_volume_usd
+                updated = True
+            
+            if updated:
                 self.session.commit()
 
         return exchange

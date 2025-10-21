@@ -301,3 +301,127 @@ class TestCryptoRepositoryPriceHistory:
 
         all_prices = repo.get_price_history_last_hours(pair.id, hours=24)
         assert len(all_prices) == 10
+
+
+class TestCryptoRepositoryUpdates:
+    """Test updating existing records."""
+
+    def test_get_or_create_cryptocurrency_updates_name(self, test_session):
+        """Test that cryptocurrency name is updated when changed."""
+        repo = CryptoRepository(test_session)
+
+        # Create initial cryptocurrency
+        crypto1 = repo.get_or_create_cryptocurrency("BTC", "Bitcoin")
+        assert crypto1.name == "Bitcoin"
+        id1 = crypto1.id
+
+        # Get and update with new name
+        crypto2 = repo.get_or_create_cryptocurrency("BTC", "Bitcoin Core")
+        assert crypto2.id == id1
+        assert crypto2.name == "Bitcoin Core"
+
+        # Verify in database
+        crypto_check = repo.get_cryptocurrency_by_symbol("BTC")
+        assert crypto_check.name == "Bitcoin Core"
+
+    def test_get_or_create_cryptocurrency_updates_description(self, test_session):
+        """Test that cryptocurrency description is updated when changed."""
+        repo = CryptoRepository(test_session)
+
+        # Create initial cryptocurrency
+        crypto1 = repo.get_or_create_cryptocurrency("ETH", "Ethereum", "Smart contract platform")
+        assert crypto1.description == "Smart contract platform"
+        id1 = crypto1.id
+
+        # Get and update with new description
+        crypto2 = repo.get_or_create_cryptocurrency(
+            "ETH", "Ethereum", "World computer with smart contracts"
+        )
+        assert crypto2.id == id1
+        assert crypto2.description == "World computer with smart contracts"
+
+        # Verify in database
+        crypto_check = repo.get_cryptocurrency_by_symbol("ETH")
+        assert crypto_check.description == "World computer with smart contracts"
+
+    def test_get_or_create_exchange_updates_country(self, test_session):
+        """Test that exchange country is updated when changed."""
+        repo = CryptoRepository(test_session)
+
+        # Create initial exchange
+        exchange1 = repo.get_or_create_exchange("Kraken", country="USA")
+        assert exchange1.country == "USA"
+        id1 = exchange1.id
+
+        # Get and update with new country
+        exchange2 = repo.get_or_create_exchange("Kraken", country="Canada")
+        assert exchange2.id == id1
+        assert exchange2.country == "Canada"
+
+        # Verify in database
+        exchange_check = repo.get_exchange_by_name("Kraken")
+        assert exchange_check.country == "Canada"
+
+    def test_get_or_create_exchange_updates_website(self, test_session):
+        """Test that exchange website is updated when changed."""
+        repo = CryptoRepository(test_session)
+
+        # Create initial exchange
+        exchange1 = repo.get_or_create_exchange("Binance", website="https://binance.com")
+        assert exchange1.website == "https://binance.com"
+        id1 = exchange1.id
+
+        # Get and update with new website
+        exchange2 = repo.get_or_create_exchange("Binance", website="https://www.binance.com")
+        assert exchange2.id == id1
+        assert exchange2.website == "https://www.binance.com"
+
+        # Verify in database
+        exchange_check = repo.get_exchange_by_name("Binance")
+        assert exchange_check.website == "https://www.binance.com"
+
+    def test_get_or_create_exchange_updates_volume(self, test_session):
+        """Test that exchange trading volume is always updated."""
+        repo = CryptoRepository(test_session)
+
+        # Create initial exchange with volume
+        exchange1 = repo.get_or_create_exchange("Coinbase", trading_volume_usd=Decimal("10000000000"))
+        assert exchange1.trading_volume_usd == Decimal("10000000000")
+        id1 = exchange1.id
+
+        # Get and update with new volume
+        exchange2 = repo.get_or_create_exchange("Coinbase", trading_volume_usd=Decimal("15000000000"))
+        assert exchange2.id == id1
+        assert exchange2.trading_volume_usd == Decimal("15000000000")
+
+        # Verify in database
+        exchange_check = repo.get_exchange_by_name("Coinbase")
+        assert exchange_check.trading_volume_usd == Decimal("15000000000")
+
+    def test_get_or_create_exchange_updates_multiple_fields(self, test_session):
+        """Test that multiple exchange fields can be updated together."""
+        repo = CryptoRepository(test_session)
+
+        # Create initial exchange
+        exchange1 = repo.get_or_create_exchange(
+            "Bybit",
+            country="Singapore",
+            website="https://bybit.com",
+            established_year=2018,
+            trading_volume_usd=Decimal("5000000000"),
+        )
+        id1 = exchange1.id
+
+        # Get and update multiple fields
+        exchange2 = repo.get_or_create_exchange(
+            "Bybit",
+            country="Cayman Islands",
+            website="https://www.bybit.com",
+            established_year=2018,
+            trading_volume_usd=Decimal("8000000000"),
+        )
+        assert exchange2.id == id1
+        assert exchange2.country == "Cayman Islands"
+        assert exchange2.website == "https://www.bybit.com"
+        assert exchange2.trading_volume_usd == Decimal("8000000000")
+
